@@ -1,0 +1,26 @@
+Logistics:
+This take home interview should take you about 3-4 hours to complete. Please don't spend longer than about 5 hours on it.
+
+Afterward, we'll ask you to come in to meet with us and walk us through your code and explain how it works. We'd also like you to present on another project you've worked on, with a focus on the code. Together, these should take about 1-1.5 hours.
+
+Part 1, Markov Chain:
+A cat's behavior can be implemented with a Markov Chain if you make the assumption that the cat has no memory. At any time step, a cat's behavior might be sleeping, eating, playful, or hiding. At time t+1, we assume that the cat's behavior depends only on its behavior at time t, as give by this transition probability matrix:
+
+behaviors = [sleeping, eating, playful, hiding]
+p(next_behavior | current_behavior) = [[.6, .1, .2, .1], [.4, .3, .2, .1], [.1, .3, .3, .3], [.4, .1, 0, .5]]
+
+This matrix is row major, such that the probability of being playful at time t+1 given sleeping at time t is p[0,2]=0.2.
+
+If the cat is sleeping at time t=0, simulate its behavior for the next 100 timesteps by implementing a markov chain. What distribution of behaviors do you see?
+
+Part 1.5 Hidden Markov Model:
+A cat's behavior can be implemented as a Hidden Markov Model if we assume that it has a hidden state given by its emotional state. In this case, its emotion at time t+1 depends only on its emotion at time t, and its behavior at time t depends only on its emotional state at time t, as given by these matrices:
+
+emotions = [tired, angry, friendly]
+p(next_emotion | current_emotion) = [[.6, .2, .2], [.4, .5, .1], [.1, .1, .8]]
+p(behavior | current_emotion) = [[.7, .1, 0, .2], [.2, .3, .1, .4], [.2, .1, .7, 0]]
+
+Implement that and report on what distribution of behaviors you see.
+
+Part 2, Machine Learning:
+Imagine you've observed your cat's behavior over t=0...10,000, as given in the attached file cat.dat. How could you predict the cat's behavior at time t+1, given its behavior up to that point? Implement a model to predict the next emotion. You might use a machine learning model or another algorithm as you see fit. How would you validate that it's working?
