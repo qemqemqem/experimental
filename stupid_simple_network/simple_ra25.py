@@ -76,6 +76,8 @@ class Network:
         for i in range(0, len(patterns)): # Inputs start at 0
             if patterns[i] > 0.5:
                 self.membranePotentials[start + i] = self.spikingThreshold[i] + 1.0  # TODO This might not be the most elegant way to clamp it
+            else:
+                self.membranePotentials[start + i] = self.spikingThreshold[i] - 1.0
 
     def DetermineSpikers(self):
         for i in range(self.size):
@@ -120,12 +122,15 @@ class Network:
                     self.plusPhaseSpikeCounts[recI] += 1
 
     def UpdateWeights(self):
-        if self.disableLearning:
+        if self.disableLearning: # During warmup
             return
         for sendI in range(self.size):
             for recI in range(self.size):
                 if sendI != recI: # No self connections
-                    adjustment = ((self.minusPhaseSpikeCounts[sendI] / 3) - self.plusPhaseSpikeCounts[recI]) * learningRate
+                    # TODO Multiplication not subtraction
+                    # TODO Make symmetric
+                    adjustment = 0
+                    # adjustment = ((self.minusPhaseSpikeCounts[sendI] / 3) - self.plusPhaseSpikeCounts[recI]) * learningRate
                     self.weights[sendI][recI] = max(0.0, self.weights[sendI][recI] + adjustment)
 
     def EvaluatePerformance(self, outputs):
@@ -158,7 +163,7 @@ class Network:
         return s
 
     def UpdateOneTimestep(self):
-        self.DetermineSpikers()
+        self.DetermineSpikers() # Because this happens at the start of this function, it occurs right after inputs and outputs are applied
         self.PropagateSpikes()
         self.RecordForLearning()
         self.ApplyRegulation()
@@ -174,7 +179,7 @@ class Network:
             self.UpdateOneTimestep()
             self.numCorrectThisTrial += self.EvaluatePerformance(outputs)
             if printEveryStep:
-                print("Timestep: ", i, "\t", self.PrintState())
+                print("Millisecond: ", i, "\t", self.PrintState())
         self.UpdateWeights()
 
 network = Network(inPatternSize, outPatternSize, 0)
@@ -197,7 +202,7 @@ for warmupEpoch in range(2):
 
 network.disableLearning = False
 evaluationsPerEpoch = []
-for epoch in range(100):
+for epoch in range(10):
     patNum = 0
     correctOverallEpoch = 0.0
     for (input, output) in patterns:
@@ -207,7 +212,7 @@ for epoch in range(100):
         patNum += 1
     evaluationsPerEpoch.append(int(correctOverallEpoch))
 
-print("\nPrinting example trial")
+print("\nPrinting example trial with Input: ", patterns[0][0], "Outputs: ", patterns[0][1])
 network.OneTrial(patterns[0][0], patterns[0][1], printEveryStep=True)
 
 print("\nEvaluations: ", evaluationsPerEpoch)
