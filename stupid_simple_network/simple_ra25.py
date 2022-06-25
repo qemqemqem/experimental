@@ -18,8 +18,8 @@ thresholdDecay = 1.0 #0.99 # I'm not sure why this is needed, but otherwise Thre
 
 # Timescale Hyperparams
 refractoryPeriod = 3 # Can't spike more often than this
-activityDecayPerMillisecond = 0.85
-activityLinearDecayPerMillisecond = 0.01
+activityDecayPerMillisecond = 0.99
+activityLinearDecayPerMillisecond = 0.01 # TODO Implement
 
 # Learning Hyperparams
 learningRate = 0.0001
