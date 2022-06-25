@@ -1,5 +1,5 @@
 import random
-from collections import defaultdict
+from average_computer import TallyItemForRunningAverage, AverageFromTally, VarianceFromTally, StdDevFromTally
 
 globalTime = 0
 
@@ -24,24 +24,6 @@ activityLinearDecayPerMillisecond = 0.01 # TODO Implement
 # Learning Hyperparams
 learningRate = 0.0001
 enforcedWeightAverage = 0.01 # Should be much bigger than learningRate
-
-runningLists = defaultdict(list)
-def TallyItemForRunningAverage(name, item, length=100):
-    # This could be optimized by using some other data structure, but ¯\_(ツ)_/¯
-    runningLists[name].append(item)
-    if len(runningLists[name]) > length:
-        runningLists[name] = runningLists[name][len(runningLists[name]) - length:]
-
-def AverageFromTally(name, eps=0.01):
-    return (sum(runningLists[name]) + eps) / (len(runningLists[name]) + eps)
-
-def VarianceFromTally(name, eps=1):
-    mean = (sum(runningLists[name]) + eps) / (len(runningLists[name]) + eps)
-    return (sum((x - mean) ** 2 for x in runningLists[name]) + eps) / (len(runningLists[name]) + eps)
-
-def StdDevFromTally(name, eps=1):
-    mean = (sum(runningLists[name]) + eps) / (len(runningLists[name]) + eps)
-    return ((sum((x - mean) ** 2 for x in runningLists[name]) + eps) / (len(runningLists[name]) + eps)) ** 0.5
 
 class Network:
     def __init__(self, inputSize: int, outputSize: int, hiddenSize: int):
