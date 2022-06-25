@@ -1,52 +1,29 @@
 import random
 from collections import defaultdict
 
-# Notes: Kevin did something like this and got it to learn simple I/O pairs
-
-# Neurons:
-# Excitatory conductance, inhib conduct, leak,
-# those feed into membrane potential,
-# spiking when membrane potential is over a threshold
-
-# Try constant lateral inhibition
-
-# Learning can be hebbian or STDP or whatever
-# can do the kinase learning thing whatever
-
-# Later: lateral inhib, NMDA, frequency regulation
-
-# Hyperparameters
-# leak = 0.8
-# weightChangeLearningRate = 0.01
-# deltaTime = 1 # in milliseconds
-# inhibitoryWeight = 0.1
-# targetActiveRatio = 0.20          # This probably has a big effect
-# regulatoryAdjustmentWeight = 0.01 # Should be like 0.01
-# excitatoryCloseDelay = 5
-# inhibitoryCloseDelay = 5
-
 globalTime = 0
 
-inPatternSize = 25
-outPatternSize = 25
+inPatternSize = 10
+outPatternSize = 10
 numPatterns = 10
 
 durationOneTimestep = 1 # 1ms
 
 # Activity Hyperparams
-startingSpikeThreshold = 1.0 # Note that this specific to each neuron is changed by the thresholdNudgeVelocity to bring Neurons more inline with the desiredInterSpikeInterval
+startingSpikeThreshold = 0.1 # Note that this specific to each neuron is changed by the thresholdNudgeVelocity to bring Neurons more inline with the desiredInterSpikeInterval
 desiredInterSpikeInterval = 30
-thresholdNudgeVelocity = 0.01 # This should be slow, so that not much change occurs within a trial
-thresholdDecay = 0.99 # I'm not sure why this is needed, but otherwise Thresholds seem to blow up
+thresholdNudgeVelocity = 0.0 #000001 # This should be slow, so that not much change occurs within a trial
+thresholdDecay = 1.0 #0.99 # I'm not sure why this is needed, but otherwise Thresholds seem to blow up
 # topKHidden = 10 # If this value is greater than 0, only the top k hidden neurons will fire, as measured by membrane potential over threshold
-activityDecayPerMillisecond = .9
 
 # Timescale Hyperparams
 refractoryPeriod = 3 # Can't spike more often than this
+activityDecayPerMillisecond = 0.85
+activityLinearDecayPerMillisecond = 0.01
 
 # Learning Hyperparams
-learningRate = 0.01
-enforcedWeightAverage = 0.01
+learningRate = 0.0001
+enforcedWeightAverage = 0.01 # Should be much bigger than learningRate
 
 runningLists = defaultdict(list)
 def TallyItemForRunningAverage(name, item, length=100):
@@ -83,8 +60,13 @@ class Network:
 
         self.timeWithinTrial = 0.0
 
+        # Just for dev and debugging
+        self.curInputs = []
+        self.curOutputs = []
+        self.totalAdjustments = [[0.0] * self.size for _ in range(self.size)]
+
     def StartNewTrial(self):
-        self.membranePotentials = [random.random() for _ in range(self.size)]
+        self.membranePotentials = [random.random() * 0.1 for _ in range(self.size)]
         self.timeLastSpiked = [random.randint(-4, -1) for _ in range(self.size)] # Some randomization
         self.currentlySpiking = [False for _ in range(self.size)]
         self.recentActivity = [0.0 for _ in range(self.size)] # This is purely for viewing and diagnostics
@@ -122,7 +104,7 @@ class Network:
                 self.timeLastSpiked[i] = self.timeWithinTrial
                 self.membranePotentials[i] = 0.0
 
-    def DecayWeights(self):
+    def DecayMembranePotentials(self):
         for i in range(self.size):
             self.membranePotentials[i] *= activityDecayPerMillisecond
 
@@ -153,21 +135,30 @@ class Network:
         plusAve = AverageFromTally("plus", 1)
         minusVar = VarianceFromTally("minus", 1)
         plusVar = VarianceFromTally("plus", 1)
+        adjustments = [[0]*self.size for _ in range(self.size)]
         for sendI in range(self.size):
             for recI in range(self.size):
-                if sendI != recI: # No self connections. Also note that this learning rule is symmetrical, so we could optimize with <
+                if sendI == recI: # No self connections. Also note that this learning rule is symmetrical, so we could optimize with <
+                    self.weights[sendI][recI] = 0 # No self weights
+                else:
                     # TODO Multiplication not subtraction
                     sendMinusPhaseActivity = float(self.minusPhaseSpikeCounts[sendI] / 3) # Divide by 3 because the minus phase is 150ms and the plus phase is 50ms
                     sendPlusPhaseActivity = float(self.plusPhaseSpikeCounts[sendI])
                     recMinusPhaseActivity = float(self.minusPhaseSpikeCounts[recI] / 3)
                     recPlusPhaseActivity = float(self.plusPhaseSpikeCounts[recI])
 
-                    totalActivity = sendMinusPhaseActivity + sendPlusPhaseActivity + recMinusPhaseActivity + recPlusPhaseActivity
-
                     # This is the core learning rule. Note that it's symmetric
-                    adjustment = (sendMinusPhaseActivity - minusAve) * (recPlusPhaseActivity - plusAve) + (recMinusPhaseActivity - minusAve) * (sendPlusPhaseActivity - plusAve)
-                    # adjustment *= totalActivity * 0.01 # Scale by activity. Not sure this is right # TODO hmm
-                    # adjustment /= (minusVar * plusVar) # This is to prevent weights from blowing up
+                    # adjustment = (sendMinusPhaseActivity - minusAve) * (recPlusPhaseActivity - plusAve) + (recMinusPhaseActivity - minusAve) * (sendPlusPhaseActivity - plusAve) # I think this is wrong
+                    # adjustment = (recPlusPhaseActivity - plusAve) * (sendPlusPhaseActivity - plusAve) # Just look at plus phase
+                    adjustment = ((sendPlusPhaseActivity - plusAve) * (recPlusPhaseActivity - plusAve)) + ((sendMinusPhaseActivity - minusAve) * (recMinusPhaseActivity - minusAve)) # https://raw.githubusercontent.com/CompCogNeuro/ed4/master/ccnbook_ed4.pdf Page 73
+                    adjustments[sendI][recI] = "{:.3f}".format(adjustment * learningRate)
+                    self.totalAdjustments[sendI][recI] += adjustment * learningRate
+
+                    if recPlusPhaseActivity > 0 or sendPlusPhaseActivity > 0:
+                        x = 5
+                        #print("Activity at: ", recI, sendI, adjustment)# recPlusPhaseActivity, sendPlusPhaseActivity, plusAve)
+                    if recPlusPhaseActivity > 0 and sendPlusPhaseActivity > 0:
+                        x = 5
 
                     # For normalization
                     minusSum += sendMinusPhaseActivity + recMinusPhaseActivity
@@ -227,12 +218,15 @@ class Network:
 
     def UpdateOneTimestep(self):
         self.DetermineSpikers() # Because this happens at the start of this function, it occurs right after inputs and outputs are applied
+        self.DecayMembranePotentials()
         self.PropagateSpikes()
         self.RecordForLearning()
         self.ApplyRegulation()
         self.Diagnostics()
 
     def OneTrial(self, inputs, outputs, printEveryStep=False):
+        self.curInputs = inputs
+        self.curOutputs = outputs
         self.StartNewTrial()
         for i in range(0, 200, durationOneTimestep):
             self.timeWithinTrial = i
@@ -248,7 +242,8 @@ class Network:
 network = Network(inPatternSize, outPatternSize, 0)
 
 patternDensity = 0.2
-patterns = [([1 if random.random() > 1-patternDensity else 0 for _ in range(inPatternSize)], [-1 for _ in range(outPatternSize)]) for _ in range(numPatterns)]
+# patterns = [([1 if random.random() > 1-patternDensity else 0 for _ in range(inPatternSize)], [-1 for _ in range(outPatternSize)]) for _ in range(numPatterns)]
+patterns = [([1 if i==j else 0 for i in range(inPatternSize)], [0 for _ in range(outPatternSize)]) for j in range(numPatterns)] # Only one neuron is active at a time
 patterns = [(patterns[i][0], patterns[i][0]) for i in range(len(patterns))] # Make inputs and outputs the same to make it easier to learn
 
 warmupPatterns = [([1 if random.random() > 1-patternDensity else 0 for _ in range(inPatternSize)], [1 if random.random() > 1-patternDensity else 0 for _ in range(outPatternSize)]) for _ in range(numPatterns)]
@@ -265,7 +260,7 @@ for warmupEpoch in range(10):
 
 network.disableLearning = False
 evaluationsPerEpoch = []
-for epoch in range(10):
+for epoch in range(50):
     patNum = 0
     correctOverallEpoch = 0.0
     for (input, output) in patterns:
@@ -280,9 +275,23 @@ network.OneTrial(patterns[0][0], patterns[0][1], printEveryStep=True)
 
 print("\nEvaluations: ", evaluationsPerEpoch)
 
+# Print weights
+print("\nWeights:")
+weightDisplay = ""
+for i, ws in enumerate(network.weights):
+    for j, w in enumerate(ws):
+        if i == j:
+            weightDisplay += "_____ "
+        elif i+inPatternSize == j or i-inPatternSize == j:
+            weightDisplay += "{:.3f}".format(w) + "<"
+        else:
+            weightDisplay += "{:.3f}".format(w) + " "
+    weightDisplay += "\n"
+print(weightDisplay)
 
+print("Thresholds: ", network.spikingThreshold)
 
-
+print("end")
 
 
 
