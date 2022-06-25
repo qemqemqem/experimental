@@ -13,12 +13,12 @@ numPatterns = 10
 
 durationOneTimestep = 1 # 1ms
 
-totalNumBalls = 1000
+totalNumBalls = 100
 pathsPerNode = 9
 ballsNeededToSpike = 4
 
 # TODO Implement
-ballDecayRate = 4 # Lose one ball every 4 time units
+ballDecayRate = 20000000 # Lose one ball every 4 time units
 
 class Network:
 	def __init__(self, inputSize: int, outputSize: int, hiddenSize: int):
@@ -32,12 +32,12 @@ class Network:
 		# For connections and stuff
 		self.pathways = [[] for _ in range(self.size)] # These are like weights
 		self.ballsInReserve = totalNumBalls
+		self.numBalls = [0] * self.size
 		self.pathsInReserve = [pathsPerNode] * self.size
 		for i in range(self.size):
 			for j in range(self.pathsInReserve[i]):
 				self.pathways[i].append(random.randint(0, self.size - 1)) # Randomly distribute paths
 			self.pathsInReserve[i] = 0
-		self.numBalls = [0] * self.size
 
 		# Just for dev and debugging
 		self.curInputs = []
@@ -49,6 +49,9 @@ class Network:
 	def StartNewTrial(self):
 		self.ballsNeededToSpike = [ballsNeededToSpike for _ in range(self.size)]
 		self.currentlySpiking = [False for _ in range(self.size)]
+
+		while self.ballsInReserve > 0:
+			self.TryAddBall(random.randint(0, self.size - 1))
 
 		# # For learning
 		# self.minusPhaseSpikeCounts = [0] * self.size # Count spikes by sending neuron
@@ -123,7 +126,8 @@ class Network:
 		s = ''.join("*" if spiking else "_" for spiking in self.currentlySpiking) # Spikes
 		# s = ''.join("A" if act > 0.5 else "_" for act in self.recentActivity) # Activity
 		s = "I:" + s[0: self.inputSize] + "O:" + s[self.inputSize: self.inputSize + self.outputSize] + "H:" + s[self.inputSize + self.outputSize:]
-		stats = ""# "\tAveThresh: " + "{:.2f}".format(AverageFromTally("threshold")) + "\tSpikingPerc: " + "{:.2f}".format(AverageFromTally("spiking perc")) + "\tAveWeight: " + "{:.2f}".format(AverageFromTally("weight"))
+		# stats = "\tAveThresh: " + "{:.2f}".format(AverageFromTally("threshold")) + "\tSpikingPerc: " + "{:.2f}".format(AverageFromTally("spiking perc")) + "\tAveWeight: " + "{:.2f}".format(AverageFromTally("weight"))
+		stats = "\tReserveBalls: " + str(self.ballsInReserve)
 		return s + stats
 
 	def UpdateOneTimestep(self):
@@ -161,7 +165,7 @@ warmupPatterns = [([1 if random.random() > 1-patternDensity else 0 for _ in rang
 print(patterns)
 
 network.disableLearning = True
-for warmupEpoch in range(10):
+for warmupEpoch in range(1):
 	patNum = 0
 	for (input, output) in warmupPatterns:
 		network.OneTrial(input, output, )
@@ -170,7 +174,7 @@ for warmupEpoch in range(10):
 
 network.disableLearning = False
 evaluationsPerEpoch = []
-for epoch in range(50):
+for epoch in range(2):
 	patNum = 0
 	correctOverallEpoch = 0.0
 	for (input, output) in patterns:
