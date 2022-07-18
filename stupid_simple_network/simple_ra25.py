@@ -31,6 +31,7 @@ class Network:
         self.inputSize = inputSize
         self.outputSize = outputSize
         self.hiddenSize = hiddenSize
+        self.allOutputs = [] # Used for evaluation
         self.StartNewTrial()
         # All this stuff is done with matrices rather than objects so that in the future it can be more easily parallelized
         self.spikingThreshold = [startingSpikeThreshold for _ in range(self.size)]
@@ -57,6 +58,9 @@ class Network:
         self.minusPhaseSpikeCounts = [0] * self.size # Count spikes by sending neuron
         self.plusPhaseSpikeCounts = [0] * self.size # Count spikes by receiving neuron
         self.numCorrectThisTrial = 0
+        self.numClosestCorrectThisTrial = 0
+        self.endOfMinusActivities = [0.0] * self.outputSize
+        self.totalNumSpikesEndOfMinusPhase = 0
 
     def ApplyInputOrOutput(self, patterns, start):
         for i in range(0, len(patterns)): # Inputs start at 0
@@ -159,15 +163,35 @@ class Network:
         TallyItemForRunningAverage("weight", weightSum / count, 100)
         self.lastWeightAverage = weightSum / count
 
+    def AccumulateEndOfMinus(self):
+        if self.timeWithinTrial >= 100 and self.timeWithinTrial < 150: # Only evaluate during the latter part of the minus phase
+            for i in range(0, self.outputSize):
+                # Count the number of spikes during this range
+                self.endOfMinusActivities[i] += self.recentActivity[self.inputSize + i]
+                self.totalNumSpikesEndOfMinusPhase += 1 if self.recentActivity[self.inputSize + i] else 0
+
     def EvaluatePerformance(self, outputs):
         numCorrect = 0.0
         if self.timeWithinTrial >= 100 and self.timeWithinTrial < 150: # Only evaluate during the latter part of the minus phase
             for i in range(0, self.outputSize):
                 # activeI = self.currentlySpiking[self.inputSize + i]
-                activeI = bool(self.recentActivity[self.inputSize + i])
+                activeI = bool(self.recentActivity[self.inputSize + i]) # TODO Should threshold here?
                 if outputs[i] == activeI:
                     numCorrect += 1
         return numCorrect / 50 # 50 = 150 - 100
+
+    def IsClosestPattern(self, all_patterns, target_pattern):
+        this_pattern = [self.endOfMinusActivities[i] * float(self.outputSize + 0.01) / float(self.totalNumSpikesEndOfMinusPhase + 0.01) for i in range(self.outputSize)] # 1 will be average
+        closest = None
+        closest_distance = 9999999
+        for pat in all_patterns:
+            distance = 0
+            for i in range(len(this_pattern)):
+                distance += (this_pattern[i] - 1) * (1 if bool(pat[i]) else -1)
+            if distance < closest_distance:
+                closest_distance = distance
+                closest = pat
+        return closest == target_pattern
 
     def ApplyRegulation(self):
         # Adjust threshold on a neuron-by-neuron basis
@@ -216,9 +240,11 @@ class Network:
             if self.timeWithinTrial >= 150:
                 self.ApplyInputOrOutput(outputs, self.inputSize)
             self.UpdateOneTimestep()
+            self.AccumulateEndOfMinus()
             self.numCorrectThisTrial += self.EvaluatePerformance(outputs)
             if printEveryStep:
                 print("Millisecond: ", i, "\t", self.PrintState())
+        self.numClosestCorrectThisTrial += self.IsClosestPattern(self.allOutputs, outputs) # TODO
         self.UpdateWeights()
 
 network = Network(inPatternSize, outPatternSize, 0)
@@ -242,20 +268,26 @@ for warmupEpoch in range(10):
 
 network.disableLearning = False
 evaluationsPerEpoch = []
+evaluationsClosestPerEpoch = []
 for epoch in range(50):
     patNum = 0
     correctOverallEpoch = 0.0
+    correctClosestOverallEpoch = 0
+    network.allOutputs = [p[1] for p in patterns]
     for (input, output) in patterns:
         network.OneTrial(input, output)
         print("Epoch:  ", epoch, "\tPattern: ", patNum, "\t", network.PrintState(), "\tCorrect: ", int(network.numCorrectThisTrial))
         correctOverallEpoch += network.numCorrectThisTrial
+        correctClosestOverallEpoch += network.numClosestCorrectThisTrial
         patNum += 1
     evaluationsPerEpoch.append(int(correctOverallEpoch))
+    evaluationsClosestPerEpoch.append(correctClosestOverallEpoch)
 
 print("\nPrinting example trial with Input: ", patterns[0][0], "Outputs: ", patterns[0][1])
 network.OneTrial(patterns[0][0], patterns[0][1], printEveryStep=True)
 
 print("\nEvaluations: ", evaluationsPerEpoch)
+print("\nEvaluations (Closest): ", evaluationsClosestPerEpoch)
 
 # Print weights
 print("\nWeights:")
